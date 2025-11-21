@@ -1,0 +1,90 @@
+
+import os
+import requests
+from urllib.parse import urlparse
+from pathlib import Path
+
+# --- Configuration ---
+# Define the directory where images will be saved
+DOWNLOAD_DIR = "Fetched_Images"
+
+def download_image_from_url():
+    """
+    Prompts for a URL, downloads the image, and saves it to a structured directory.
+    """
+    # 1. Prompt the user for a URL (input() works interactively in Colab)
+    # Note: In Colab, the prompt appears near the code cell.
+    image_url = input("🖼️ Please enter the URL of the image you want to download: ").strip()
+
+    if not image_url:
+        print("❌ Error: URL cannot be empty.")
+        return
+
+    # 2. Create the directory if it doesn't exist
+    Path(DOWNLOAD_DIR).mkdir(exist_ok=True)
+    print(f"📁 Directory '{DOWNLOAD_DIR}' is ready in Colab environment.")
+
+    try:
+        # 3. Download the image from the provided URL
+        print(f"⏳ Attempting to download image from: {image_url}")
+
+        # Use a timeout and set stream=True for efficiency
+        response = requests.get(image_url, stream=True, timeout=10)
+
+        # Raise an HTTPError if the status code is 4xx or 5xx
+        response.raise_for_status()
+
+    except requests.exceptions.Timeout:
+        # Graceful error handling for connection issues
+        print("❌ Error: The connection timed out (10 seconds). Check your internet connection or URL validity.")
+        return
+    except requests.exceptions.HTTPError as err:
+        # Graceful error handling for HTTP status codes (e.g., 404 Not Found, 403 Forbidden)
+        print(f"❌ HTTP Error: Could not retrieve the image. Status code: {response.status_code}. Details: {err}")
+        return
+    except requests.exceptions.RequestException as err:
+        # Catch all other request errors (DNS failure, invalid URL scheme, etc.)
+        print(f"❌ A general connection error occurred: {err}")
+        return
+
+    # 4. Determine an appropriate filename
+    parsed_url = urlparse(image_url)
+    path_segments = Path(parsed_url.path).parts
+    filename = path_segments[-1] if path_segments and path_segments[-1] else "downloaded_image"
+
+    # Clean up filename (e.g., remove query parameters or ensure extension)
+    if '?' in filename:
+        filename = filename.split('?')[0]
+
+    # Attempt to infer extension if missing
+    if not any(filename.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+        content_type = response.headers.get('Content-Type', '').split('/')
+        ext = f".{content_type[-1].replace('jpeg', 'jpg')}" if len(content_type) > 1 and 'image' in content_type[0] else ".jpg"
+        # Avoid double extension if a period exists but isn't an extension
+        if '.' in filename and len(filename.split('.')[-1]) > 5:
+             filename = filename.split('.')[0] + ext
+        elif '.' not in filename:
+             filename = filename + ext
+
+
+    # Define the full save path
+    filepath = os.path.join(DOWNLOAD_DIR, filename)
+
+    # 5. Save the image to the Fetched_Images directory
+    try:
+        with open(filepath, 'wb') as f:
+            # Write content in chunks
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        print(f"\n✅ Success! Image saved to: {filepath}")
+        # Display the file structure in Colab for verification
+        print("\nColab Directory Contents:")
+        !ls -l {DOWNLOAD_DIR}
+
+    except IOError as err:
+        print(f"❌ File System Error: Could not write file to disk. Details: {err}")
+
+# --- Execution ---
+if __name__ == "__main__":
+    download_image_from_url()
